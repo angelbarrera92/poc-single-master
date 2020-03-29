@@ -1,0 +1,4 @@
+.envrc
+.terraform
+terraform.plan
+.key
