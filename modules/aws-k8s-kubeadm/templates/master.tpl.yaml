@@ -1,0 +1,95 @@
+#cloud-config
+write_files:
+  - content: |
+        deb https://apt.kubernetes.io/ kubernetes-xenial main
+    path: /etc/apt/sources.list.d/kubernetes.list
+  - content: |
+        [keyfile]
+        unmanaged-devices=interface-name:cali*;interface-name:tunl*
+    path: /etc/NetworkManager/conf.d/calico.conf
+  - content: |
+        {
+          "exec-opts": ["native.cgroupdriver=systemd"],
+          "live-restore": true,
+          "log-driver": "json-file",
+          "log-opts": {
+            "max-size": "10m",
+            "max-file": "5"
+          },
+          "storage-driver": "overlay2"
+        }
+    path: /etc/docker/daemon.json
+  - content: |
+        apiVersion: kubeadm.k8s.io/v1beta2
+        kind: InitConfiguration
+        bootstrapTokens:
+        - token: "${join_token}"
+          description: "kubeadm bootstrap token"
+          ttl: "0"
+        ---
+        apiVersion: kubeadm.k8s.io/v1beta2
+        kind: ClusterConfiguration
+        apiServer:
+          certSANs:
+          - ${public_ip}
+          extraArgs:
+            authorization-mode: Node,RBAC
+          timeoutForControlPlane: 4m0s
+        certificatesDir: /etc/kubernetes/pki
+        clusterName: kubernetes
+        controllerManager: {}
+        dns:
+          type: CoreDNS
+        etcd:
+          local:
+            dataDir: "/var/lib/etcd"
+        imageRepository: k8s.gcr.io
+        kubernetesVersion: v1.16.8
+        networking:
+          dnsDomain: cluster.local
+          podSubnet: ${pod_network_cidr}
+          serviceSubnet: ${svc_network_cidr}
+        scheduler: {}
+    path: /etc/kubernetes/kubeadm.config.yaml
+users:
+  - name: ${cluster_name}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_authorized_key}
+runcmd:
+  - sysctl -w net.netfilter.nf_conntrack_max=1000000
+  - echo "net.netfilter.nf_conntrack_max=1000000" >> /etc/sysctl.conf
+  - sysctl -w net.bridge.bridge-nf-call-iptables=1
+  - echo "net.bridge.bridge-nf-call-iptables=1" >> /etc/sysctl.conf
+  - sed -i 's/^#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.d/99-sysctl.conf
+  - sysctl --quiet --system
+  - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get upgrade -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get autoclean -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get install -yq ipset iptables arptables ebtables apt-transport-https nfs-common
+  - update-alternatives --set iptables /usr/sbin/iptables-legacy
+  - update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+  - update-alternatives --set arptables /usr/sbin/arptables-legacy
+  - update-alternatives --set ebtables /usr/sbin/ebtables-legacy
+  - curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  - VERSION=18.09 sh /tmp/get-docker.sh
+  - usermod -aG docker ${cluster_name}
+  - mkdir -p /etc/systemd/system/docker.service.d
+  - systemctl daemon-reload --no-block
+  - systemctl restart docker --no-block
+  - DEBIAN_FRONTEND=noninteractive apt-get install -yq kubelet=${cluster_version}-00 kubeadm=${cluster_version}-00 kubectl=${cluster_version}-00
+  - apt-mark hold kubelet kubeadm kubectl
+  - kubeadm init --config /etc/kubernetes/kubeadm.config.yaml --ignore-preflight-errors=ExternalEtcdVersion --node-name=$(hostname -f)
+  - mkdir -p /home/${cluster_name}/.kube
+  - cp -i /etc/kubernetes/admin.conf /home/${cluster_name}/.kube/config
+  - chown ${cluster_name}:${cluster_name} /home/${cluster_name}/.kube/config
+  - export KUBECONFIG=/etc/kubernetes/admin.conf
+  - curl -s https://docs.projectcalico.org/v3.12/manifests/calico.yaml -O
+  - sed -i -e "s?192.168.0.0/16?${pod_network_cidr}?g" calico.yaml
+  - kubectl apply -f calico.yaml
+  - kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.12/deploy/local-path-storage.yaml
+  - "kubectl patch storageclass local-path -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'"

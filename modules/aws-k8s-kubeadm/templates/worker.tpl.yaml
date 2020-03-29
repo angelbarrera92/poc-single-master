@@ -1,0 +1,137 @@
+#cloud-config
+write_files:
+  - content: |
+        [keyfile]
+        unmanaged-devices=interface-name:cali*;interface-name:tunl*
+    path: /etc/NetworkManager/conf.d/calico.conf
+  - content: |
+        #!/bin/sh
+
+        TIMEOUT=15
+        QUIET=0
+
+        echoerr() {
+          if [ "$QUIET" -ne 1 ]; then printf "%s\n" "$*" 1>&2; fi
+        }
+
+        usage() {
+          exitcode="$1"
+          cat << USAGE >&2
+        Usage:
+          $cmdname host:port [-t timeout] [-- command args]
+          -q | --quiet                        Do not output any status messages
+          -t TIMEOUT | --timeout=timeout      Timeout in seconds, zero for no timeout
+          -- COMMAND ARGS                     Execute command with args after the test finishes
+        USAGE
+          exit "$exitcode"
+        }
+
+        wait_for() {
+          command="$*"
+          for i in `seq $TIMEOUT` ; do
+            nc -z "$HOST" "$PORT" > /dev/null 2>&1
+            
+            result=$?
+            if [ $result -eq 0 ] ; then
+              if [ -n "$command" ] ; then
+                exec $command
+              fi
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Operation timed out" >&2
+          exit 1
+        }
+
+        while [ $# -gt 0 ]
+        do
+          case "$1" in
+            *:* )
+            HOST=$(printf "%s\n" "$1"| cut -d : -f 1)
+            PORT=$(printf "%s\n" "$1"| cut -d : -f 2)
+            shift 1
+            ;;
+            -q | --quiet)
+            QUIET=1
+            shift 1
+            ;;
+            -t)
+            TIMEOUT="$2"
+            if [ "$TIMEOUT" = "" ]; then break; fi
+            shift 2
+            ;;
+            --timeout=*)
+            TIMEOUT="$${1#*=}"
+            shift 1
+            ;;
+            --)
+            shift
+            break
+            ;;
+            --help)
+            usage 0
+            ;;
+            *)
+            echoerr "Unknown argument: $1"
+            usage 1
+            ;;
+          esac
+        done
+
+        if [ "$HOST" = "" -o "$PORT" = "" ]; then
+          echoerr "Error: you need to provide a host and port to test."
+          usage 2
+        fi
+
+        wait_for "$@"
+    path: /usr/local/bin/wait-for
+    permissions: '0755'
+  - content: |
+        deb https://apt.kubernetes.io/ kubernetes-xenial main
+    path: /etc/apt/sources.list.d/kubernetes.list
+  - content: |
+        {
+          "exec-opts": ["native.cgroupdriver=systemd"],
+          "live-restore": true,
+          "log-driver": "json-file",
+          "log-opts": {
+            "max-size": "10m",
+            "max-file": "5"
+          },
+          "storage-driver": "overlay2"
+        }
+    path: /etc/docker/daemon.json
+users:
+  - name: ${cluster_name}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_authorized_key}
+runcmd:
+  - sysctl -w net.netfilter.nf_conntrack_max=1000000
+  - echo "net.netfilter.nf_conntrack_max=1000000" >> /etc/sysctl.conf
+  - sysctl -w net.bridge.bridge-nf-call-iptables=1
+  - echo "net.bridge.bridge-nf-call-iptables=1" >> /etc/sysctl.conf
+  - sed -i 's/^#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.d/99-sysctl.conf
+  - sysctl --quiet --system
+  - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get upgrade -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get autoclean -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq
+  - DEBIAN_FRONTEND=noninteractive apt-get install -yq ipset iptables arptables ebtables apt-transport-https nfs-common
+  - update-alternatives --set iptables /usr/sbin/iptables-legacy
+  - update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+  - update-alternatives --set arptables /usr/sbin/arptables-legacy
+  - update-alternatives --set ebtables /usr/sbin/ebtables-legacy
+  - curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  - VERSION=18.09 sh /tmp/get-docker.sh
+  - usermod -aG docker ${cluster_name}
+  - mkdir -p /etc/systemd/system/docker.service.d
+  - systemctl daemon-reload --no-block
+  - systemctl restart docker --no-block
+  - DEBIAN_FRONTEND=noninteractive apt-get install -yq kubelet=${cluster_version}-00 kubeadm=${cluster_version}-00 kubectl=${cluster_version}-00
+  - apt-mark hold kubelet kubeadm kubectl
+  - wait-for ${master_private_ip}:6443 -t 1200 -- kubeadm join  --token=${join_token} --discovery-token-unsafe-skip-ca-verification --node-name=$(hostname -f) ${master_private_ip}:6443
