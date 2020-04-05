@@ -6,6 +6,8 @@ module "external" {
   cluster_name    = "external"
   cluster_version = "1.16.8"
 
+  #master_backup_ami = "ami-"
+
   worker_count = 2
   external_db  = true
 

@@ -47,6 +47,12 @@ variable "master_instance_type" {
   default     = "m5.large"
 }
 
+variable "master_backup_ami" {
+  type        = string
+  description = "If you want to restore an Kubernetes Master from a previous state specify the AMI ID"
+  default     = ""
+}
+
 variable "worker_instance_type" {
   type        = string
   description = "Instance type used to run Kubernetes worker. Choose one: m5.large, m5.xlarge, m5.2xlarge, m5.4xlarge"

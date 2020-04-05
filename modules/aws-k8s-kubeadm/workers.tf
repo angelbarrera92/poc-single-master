@@ -46,7 +46,7 @@ data "template_file" "init_worker" {
     ssh_authorized_key = tls_private_key.master.public_key_openssh
     cluster_name       = var.cluster_name
     cluster_version    = var.cluster_version
-    master_private_ip  = aws_spot_instance_request.master.private_ip
+    master_private_ip  = local.master_private_static_ip
     join_token         = "${random_string.firts_part.result}.${random_string.second_part.result}"
   }
 }

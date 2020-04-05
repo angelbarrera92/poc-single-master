@@ -27,8 +27,11 @@ resource "tls_private_key" "master" {
 }
 
 locals {
-  pgetcd_db_endpoint = var.external_db == true ? "postgres://pgetcd:${random_string.db_password[0].result}@${aws_db_instance.db[0].endpoint}/pgetcd" : ""
-  template_file      = var.external_db == true ? "master-external-db.tpl.yaml" : "master.tpl.yaml"
+  pgetcd_db_endpoint       = var.external_db == true ? "postgres://pgetcd:${random_string.db_password[0].result}@${aws_db_instance.db[0].endpoint}/pgetcd" : ""
+  template_file            = var.external_db == true ? "master-external-db.tpl.yaml" : "master.tpl.yaml"
+  master_private_static_ip = cidrhost(data.aws_subnet.public.cidr_block, 10)
+  master_ami               = var.master_backup_ami == "" ? lookup(local.ubuntu_amis, var.region, "") : var.master_backup_ami
+  master_user_data         = var.master_backup_ami == "" ? data.template_file.init_master.rendered : ""
 }
 
 data "template_file" "init_master" {
@@ -62,12 +65,13 @@ resource "random_string" "second_part" {
 }
 
 resource "aws_spot_instance_request" "master" {
-  ami                    = lookup(local.ubuntu_amis, var.region, "")
+  ami                    = local.master_ami
   instance_type          = var.master_instance_type
   subnet_id              = data.aws_subnet.public.id
   vpc_security_group_ids = ["${aws_security_group.master.id}"]
   source_dest_check      = false
-  user_data              = data.template_file.init_master.rendered
+  user_data              = local.master_user_data
+  private_ip             = local.master_private_static_ip
   root_block_device {
     volume_size = 100
   }

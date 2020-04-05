@@ -6,6 +6,8 @@ module "embeded" {
   cluster_name    = "embeded"
   cluster_version = "1.16.8"
 
+  #master_backup_ami = "ami-"
+
   worker_count = 2
 
   public_subnet_id  = "subnet-3253677a"
