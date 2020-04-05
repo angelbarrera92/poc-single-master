@@ -44,7 +44,7 @@ write_files:
           local:
             dataDir: "/var/lib/etcd"
         imageRepository: k8s.gcr.io
-        kubernetesVersion: v1.16.8
+        kubernetesVersion: v${cluster_version}
         networking:
           dnsDomain: cluster.local
           podSubnet: ${pod_network_cidr}

@@ -45,7 +45,7 @@ write_files:
             endpoints:
               - "http://localhost:2379"
         imageRepository: k8s.gcr.io
-        kubernetesVersion: v1.16.8
+        kubernetesVersion: v${cluster_version}
         networking:
           dnsDomain: cluster.local
           podSubnet: ${pod_network_cidr}
