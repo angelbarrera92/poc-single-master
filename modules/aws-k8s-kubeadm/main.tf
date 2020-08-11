@@ -1,5 +1,5 @@
 provider "aws" {
-  version = "~> 2.48"
+  version = "~> 3.0"
 }
 
 provider "tls" {
