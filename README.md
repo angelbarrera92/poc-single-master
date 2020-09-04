@@ -1,8 +1,11 @@
-# POC environment
+# POC environments
 
+Single master Kubernetes clusters (poc).
+One with embedded etcd, the other one with external etcd as a postgresql database.
 
+**Note:** Run once at a time. Place a `.deact` suffix to `external.tf` or `embeded.tf` file.
 
-# Demo APP: Guestbook
+## Demo APP: Guestbook
 
 ```bash
 $ kubectl apply -f https://k8s.io/examples/application/guestbook/redis-master-deployment.yaml
@@ -14,7 +17,7 @@ $ kubectl apply -f https://k8s.io/examples/application/guestbook/frontend-servic
 $ kubectl scale deployment frontend --replicas=5
 ```
 
-## Backup-Restore external-db Cluster
+## Backup & Restore: external DB Cluster
 
 ### Step By Step
 
@@ -50,13 +53,34 @@ master$ sudo kubeadm init --config /etc/kubernetes/kubeadm.config.yaml --ignore-
 Enjoy
 
 
+## Backup & Restore: embedded DB Cluster
 
-## Backup-Restore external-db embeded
+### Step By Step
 
-Backup using cloud snapshot mechanism
-Restore using the `#master_backup_ami` attribute:
+* Create the cluster: `terraform apply --auto-approve` (remove, if any, the `master_backup_ami` value)
+  * Enter the master node: `terraform output embeded_tls_private_key > key && chmod 600 key && ssh -i key embeded@$(terraform output embeded_master_public_ip)`
+  * Wait for every node to join the cluster. Run `watch kubect get nodes` in the master node.
+* Scale CoreDNS: `kubectl scale deploy coredns -n kube-system --replicas=5`
+* Deploy guestbook application (see commands above)
+  * test it (Get the public IP of a worker instance from the AWS Console, get the port number of the frontend service)
+    * http://IP:SVC-NODEPORT
+    * http://IP:SVC-NODEPORT/guestbook.php?cmd=get&key=messages
+* Create an AMI snapshot (Don't forget to mark to don't restart the instance while snapshooting)
+  * Wait for the completion
+* Deploy a pod *(alter the etcd state somehow)*
+* Destroy the master instance
+  * ATTENTION: During the destroy, some errors could happen
+  * Check everything continues working
+    * http://IP:SVC-NODEPORT
+    * http://IP:SVC-NODEPORT/guestbook.php?cmd=get&key=messages
+* terraform apply (with `the master_backup_ami` value)
+* Check everything continues working
+  * Wait for everything working
+    * http://IP:SVC-NODEPORT
+    * http://IP:SVC-NODEPORT/guestbook.php?cmd=get&key=messages
+*  Restart worker kubelets
+  * `$ ssh -i key embeded@WORKER.PUBLIC.IP sudo systemctl restart kubelet`
+  * `kubectl rollout restart ds kube-proxy -n kube-system`
+* `kubectl run nginx --image nginx:latest`
 
-No cloud-init
-Same public/private ip
-
-q
+Enjoy

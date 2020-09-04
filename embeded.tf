@@ -4,14 +4,14 @@ module "embeded" {
   region = data.aws_region.current.name
 
   cluster_name    = "embeded"
-  cluster_version = "1.16.8"
+  cluster_version = "1.19.0"
 
   #master_backup_ami = "ami-"
 
   worker_count = 2
 
-  public_subnet_id  = "subnet-3253677a"
-  private_subnet_id = "subnet-d9c4e1bf"
+  public_subnet_id  = "subnet-04ba8fda7f4638651"
+  private_subnet_id = "subnet-0d59b2ce4a7691c57"
 
 }
 
