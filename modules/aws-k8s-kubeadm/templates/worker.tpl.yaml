@@ -126,6 +126,10 @@ runcmd:
   - update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
   - update-alternatives --set arptables /usr/sbin/arptables-legacy
   - update-alternatives --set ebtables /usr/sbin/ebtables-legacy
+  - systemctl disable systemd-resolved.service
+  - systemctl stop systemd-resolved
+  - rm -rf /etc/resolv.conf
+  - cp /run/systemd/resolve/resolv.conf /etc/resolv.conf
   - curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
   - VERSION=18.09 sh /tmp/get-docker.sh
   - usermod -aG docker ${cluster_name}
