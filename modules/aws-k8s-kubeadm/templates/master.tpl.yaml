@@ -70,7 +70,7 @@ runcmd:
   - DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -yq
   - DEBIAN_FRONTEND=noninteractive apt-get autoclean -yq
   - DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq
-  - DEBIAN_FRONTEND=noninteractive apt-get install -yq ipset iptables arptables ebtables apt-transport-https nfs-common
+  - DEBIAN_FRONTEND=noninteractive apt-get install -yq ipset iptables arptables ebtables apt-transport-https nfs-common open-iscsi
   - update-alternatives --set iptables /usr/sbin/iptables-legacy
   - update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
   - update-alternatives --set arptables /usr/sbin/arptables-legacy
